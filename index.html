@@ -68,6 +68,13 @@
     <div class="row"><span class="dot busy" id="d1"></span><span id="t1">جارٍ فحص الاتصال…</span></div>
     <div class="u" id="u">—</div>
     <a class="go" id="go" href="#" aria-disabled="true">افتح بصيرة</a>
+    <div id="gwrap" hidden style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;text-align:center">
+        أو ادخل بحساب Google مباشرة — بدون كلمة مرور
+      </div>
+      <div id="gbtn" style="display:flex;justify-content:center;min-height:44px"></div>
+      <div id="gmsg" style="color:#e0554d;font-size:12px;margin-top:8px;text-align:center"></div>
+    </div>
   </div>
 
   <div class="foot">
@@ -83,6 +90,8 @@
       "https://obituaries-respiratory-pulling-striking.trycloudflare.com",
       "https://element-sale-libraries-under.trycloudflare.com"
 ];
+  // معرّف عميل Google — يُملأ تلقائياً من إعدادات الخادم.
+  var GOOGLE_CLIENT_ID = "";
 
   var d1 = document.getElementById('d1'),
       t1 = document.getElementById('t1'),
@@ -110,6 +119,18 @@
     go.setAttribute('aria-disabled', 'false');
   }
 
+  // يرجّع أول عنوان حيّ — يُستخدم للتحويل بعد دخول Google
+  function firstLive() {
+    var i = 0;
+    return new Promise(function (resolve) {
+      (function step() {
+        if (i >= CANDIDATES.length) { resolve(null); return; }
+        var base = CANDIDATES[i++];
+        probe(base).then(function (ok) { ok ? resolve(base) : step(); });
+      })();
+    });
+  }
+
   function run(i) {
     if (i >= CANDIDATES.length) {
       set('off', 'الموقع غير متاح حاليًا — أعد المحاولة بعد قليل.');
@@ -129,6 +150,52 @@
   }
 
   run(0);
+
+  // ── دخول Google من أصل ثابت (github.io) ثم تمرير الهوية للموقع الحيّ ──
+  // سبب وجوده: زر Google يعمل فقط من أصل مسجّل في Google Cloud، وعنوان
+  // النفق يتغيّر؛ لذا نتعلّم الهوية هنا ونمرّرها للموقع عبر الـfragment.
+  if (!GOOGLE_CLIENT_ID) return;
+  document.getElementById('gwrap').hidden = false;
+
+  function fail(msg) {
+    document.getElementById('gmsg').textContent = msg || '';
+  }
+
+  function onCredential(resp) {
+    var cred = resp && resp.credential;
+    if (!cred) { fail('لم يُرجِع Google هوية — أعد المحاولة'); return; }
+    fail('');
+    set('busy', 'جارٍ التوصيل بالموقع…');
+    firstLive().then(function (base) {
+      if (!base) {
+        set('off', 'الموقع غير متاح حاليًا — أعد المحاولة بعد قليل.');
+        fail('الخادم الحيّ غير متاح دلوقتي.');
+        return;
+      }
+      location.replace(base.replace(/\/+$/, '') +
+        '/#google=' + encodeURIComponent(cred));
+    });
+  }
+
+  var s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.async = true;
+  s.onload = function () {
+    if (!window.google || !google.accounts) {
+      fail('تعذّر تحميل خدمة Google — تحقّق من الاتصال');
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: onCredential,
+    });
+    google.accounts.id.renderButton(document.getElementById('gbtn'), {
+      theme: 'filled_black', size: 'large', shape: 'pill',
+      text: 'signin_with', locale: 'ar', width: 260,
+    });
+  };
+  s.onerror = function () { fail('تعذّر تحميل خدمة Google'); };
+  document.head.appendChild(s);
 })();
 </script>
 </body>
